@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "slurs2-backend", "slurs2-backend\slurs2-backend.csproj", "{69865359-A769-4150-812C-6F872D97D3DE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "slurs2.backend", "slurs2.backend\slurs2.backend.csproj", "{69865359-A769-4150-812C-6F872D97D3DE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
