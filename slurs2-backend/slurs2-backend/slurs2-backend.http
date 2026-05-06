@@ -1,0 +1,6 @@
+@slurs2_backend_HostAddress = http://localhost:5117
+
+GET {{slurs2_backend_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
