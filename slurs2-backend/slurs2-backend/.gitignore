@@ -1,0 +1,18 @@
+# Build output
+bin/
+obj/
+
+# Rider
+.idea/
+
+# dotnet
+*.user
+*.suo
+
+# Environment / secrets
+appsettings.Development.json
+.env
+
+# OS
+.DS_Store
+Thumbs.db
