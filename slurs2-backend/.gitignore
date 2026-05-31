@@ -12,6 +12,7 @@ obj/
 # Environment / secrets
 appsettings.Development.json
 .env
+slurs.json
 
 # OS
 .DS_Store

@@ -1,6 +1,44 @@
+using Microsoft.EntityFrameworkCore;
+using slurs2.backend.Data;
+using slurs2.backend.Models;
+
 namespace slurs2.backend.Services;
 
-public class PlayerScannerService
+public class PlayerScannerService (LogsFetcherService logsFetcherService,
+    SlurDetectorService slurDetectorService, AppDbContext db)
 {
+    public async Task ScanPlayer(string steamId)
+    {
+        var logs = await logsFetcherService.GetLogIdsForPlayer(steamId);
+
+        foreach (var (logId, logDate) in logs)
+        {
+            var alreadyProcessed = await db.ProcessedLogs.AnyAsync(l => l.LogId == logId);
     
+            if (alreadyProcessed)
+                continue;
+    
+            var messages = await logsFetcherService.GetChatMessages(logId);
+
+            foreach (var message in messages.Where(m => m.Steamid == steamId))
+            {
+                var result = slurDetectorService.Analyze(message.Msg);
+                if (!result.Found)
+                    continue;
+
+                db.SlurInstances.Add(new SlurInstance(
+                    message.Msg,
+                    logId,
+                    steamId,
+                    result.Count,
+                    DateTimeOffset.FromUnixTimeSeconds(logDate).UtcDateTime,
+                    result.Type!.Value
+                ));
+            }
+
+            db.ProcessedLogs.Add(new ProcessedLog { LogId = logId });
+        }
+        
+        await db.SaveChangesAsync();
+    }
 }

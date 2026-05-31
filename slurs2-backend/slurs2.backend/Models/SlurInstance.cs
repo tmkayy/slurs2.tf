@@ -34,4 +34,14 @@ public class SlurInstance
     
     [Required]
     public SlurType SlurType { get; set; }
+    
+    public SlurInstance(string message, int logId, string playerSteamId, int slurCount, DateTime messageDate, SlurType slurType)
+    {
+        Message = message;
+        LogId = logId;
+        PlayerSteamId = playerSteamId;
+        SlurCount = slurCount;
+        MessageDate = messageDate;
+        SlurType = slurType;
+    }
 }

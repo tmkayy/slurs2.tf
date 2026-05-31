@@ -9,4 +9,5 @@ public class LogSearchResponse
 public class LogSearchResult
 {
     public int Id { get; set; }
+    public int Date { get; set; }
 }

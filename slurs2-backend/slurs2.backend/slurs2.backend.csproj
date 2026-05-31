@@ -17,4 +17,10 @@
     <PackageReference Include="Refit.HttpClientFactory" Version="10.0.1" />
   </ItemGroup>
 
+  <ItemGroup>
+  <Content Include="slurs.json">
+    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+  </Content>
+  </ItemGroup>
+
 </Project>
