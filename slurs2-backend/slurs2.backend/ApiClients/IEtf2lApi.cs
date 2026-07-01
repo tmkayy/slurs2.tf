@@ -6,5 +6,5 @@ namespace slurs2.backend.ApiClients;
 public interface IEtf2lApi
 {
     [Get("/player/{steamId}")]
-    Task<Etf2lPlayerResponse> GetPlayer(int steamId);
+    Task<Etf2lPlayerResponse> GetPlayer(string steamId);
 }
