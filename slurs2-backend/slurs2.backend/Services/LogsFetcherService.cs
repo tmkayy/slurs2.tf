@@ -1,3 +1,4 @@
+using Refit;
 using slurs2.backend.ApiClients;
 using slurs2.backend.ApiResponses;
 
@@ -17,7 +18,16 @@ public class LogsFetcherService(ILogsApi logsApi)
 
     public async Task<List<ChatMessage>> GetChatMessages(int logId)
     {
-        var response = await logsApi.GetLog(logId);
-        return response.Chat;
+        try
+        {
+            var response = await logsApi.GetLog(logId);
+            return response.Chat;
+        }
+        catch (ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            await Task.Delay(5000);
+            var response = await logsApi.GetLog(logId);
+            return response.Chat;
+        }
     }
 }

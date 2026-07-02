@@ -5,10 +5,11 @@ using slurs2.backend.Models;
 namespace slurs2.backend.Services;
 
 public class PlayerScannerService (LogsFetcherService logsFetcherService,
-    SlurDetectorService slurDetectorService, AppDbContext db)
+    SlurDetectorService slurDetectorService, PlayerService playerService, AppDbContext db)
 {
     public async Task ScanPlayer(string steamId)
     {
+        await playerService.GetOrCreatePlayerAsync(steamId);
         var logs = await logsFetcherService.GetLogIdsForPlayer(steamId);
 
         foreach (var (logId, logDate) in logs)
@@ -19,7 +20,8 @@ public class PlayerScannerService (LogsFetcherService logsFetcherService,
                 continue;
     
             var messages = await logsFetcherService.GetChatMessages(logId);
-
+            await Task.Delay(500);
+            
             foreach (var message in messages.Where(m => m.Steamid == steamId))
             {
                 var result = slurDetectorService.Analyze(message.Msg);
