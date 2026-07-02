@@ -11,7 +11,8 @@ public class PlayerScannerService (LogsFetcherService logsFetcherService,
     {
         await playerService.GetOrCreatePlayerAsync(steamId);
         var logs = await logsFetcherService.GetLogIdsForPlayer(steamId);
-
+        int batchSize = 0;
+        
         foreach (var (logId, logDate) in logs)
         {
             var alreadyProcessed = await db.ProcessedLogs.AnyAsync(l => l.LogId == logId);
@@ -20,7 +21,7 @@ public class PlayerScannerService (LogsFetcherService logsFetcherService,
                 continue;
     
             var messages = await logsFetcherService.GetChatMessages(logId);
-            await Task.Delay(500);
+            await Task.Delay(100);
             
             foreach (var message in messages.Where(m => m.Steamid == steamId))
             {
@@ -39,6 +40,13 @@ public class PlayerScannerService (LogsFetcherService logsFetcherService,
             }
 
             db.ProcessedLogs.Add(new ProcessedLog { LogId = logId });
+            batchSize++;
+
+            if (batchSize >= 50)
+            {
+                await db.SaveChangesAsync();
+                batchSize = 0;
+            }
         }
         
         await db.SaveChangesAsync();
