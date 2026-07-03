@@ -23,7 +23,10 @@ public class SlurDetectorService
     {
         var path = Path.Combine(AppContext.BaseDirectory, "slurs.json");
         var json = File.ReadAllText(path);
-        var data = JsonSerializer.Deserialize<SlurList>(json)!;
+        var data = JsonSerializer.Deserialize<SlurList>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        })!;
 
         _patterns = new List<SlurPattern>();
 
@@ -36,6 +39,10 @@ public class SlurDetectorService
 
     public SlurDetectionResult Analyze(string message)
     {
+        Console.WriteLine($"Analyzing: '{message}', patterns: {_patterns.Count}");
+        foreach (var p in _patterns)
+            Console.WriteLine($"  Pattern: {p.Pattern}, Type: {p.Type}");
+        
         SlurType? highestType = null;
         int count = 0;
 

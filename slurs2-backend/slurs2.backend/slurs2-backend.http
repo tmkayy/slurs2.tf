@@ -1,6 +1,8 @@
 @slurs2_backend_HostAddress = http://localhost:5117
 
-POST http://localhost:5117/api/players/xxx/scan
+
+POST http://localhost:5117/api/xxx/scan
+
 Accept: application/json
 
 ###
