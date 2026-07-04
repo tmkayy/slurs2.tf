@@ -26,6 +26,9 @@ builder.Services.AddRefitClient<ILogsApi>(refitSettings)
 builder.Services.AddRefitClient<ISteamApi>(refitSettings)
     .ConfigureHttpClient(c => c.BaseAddress = new Uri("https://api.steampowered.com"));
 
+builder.Services.AddRefitClient<IClassifierApi>(refitSettings)
+    .ConfigureHttpClient(c => c.BaseAddress = new Uri("http://localhost:8000"));
+
 builder.Services.AddSingleton<SlurDetectorService>();
 builder.Services.AddScoped<LogsFetcherService>();
 builder.Services.AddScoped<PlayerService>();

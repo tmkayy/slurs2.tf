@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using slurs2.backend.Data;
 using slurs2.backend.DTOs;
+using slurs2.backend.Models;
 using slurs2.backend.Services;
 
 namespace slurs2.backend.Controllers;
@@ -16,7 +17,7 @@ public class PlayersController(AppDbContext db, PlayerScannerService playerScann
     {
         var players = await db.Players
             .Include(p => p.SlurInstances)
-            .OrderByDescending(p => p.SlurInstances.Count)
+            .OrderByDescending(p => p.SlurInstances.Count(s=> s.SlurType == SlurType.Slur))
             .ToListAsync();
 
         var result = players.Select((p, i) => new PlayerSummaryDto
@@ -25,7 +26,7 @@ public class PlayersController(AppDbContext db, PlayerScannerService playerScann
             SteamId = p.SteamId,
             SteamName = p.SteamName,
             Country = p.Country,
-            SlurCount = p.SlurInstances.Count
+            SlurCount = p.SlurInstances.Count(s=> s.SlurType == SlurType.Slur)
         }).ToList();
 
         return Ok(result);
@@ -37,7 +38,7 @@ public class PlayersController(AppDbContext db, PlayerScannerService playerScann
         var players = await db.Players
             .Where(p=>p.Country == country)
             .Include(p=>p.SlurInstances)
-            .OrderByDescending(p=>p.SlurInstances.Count)
+            .OrderByDescending(p => p.SlurInstances.Count(s=> s.SlurType == SlurType.Slur))
             .ToListAsync();
         
         var result = players.Select((p, i) => new PlayerSummaryDto
@@ -46,7 +47,7 @@ public class PlayersController(AppDbContext db, PlayerScannerService playerScann
             SteamId = p.SteamId,
             SteamName = p.SteamName,
             Country = p.Country,
-            SlurCount = p.SlurInstances.Count
+            SlurCount = p.SlurInstances.Count(s=> s.SlurType == SlurType.Slur)
         }).ToList();
         
         return Ok(result);

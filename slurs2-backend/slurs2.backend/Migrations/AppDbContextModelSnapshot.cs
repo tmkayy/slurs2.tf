@@ -39,7 +39,7 @@ namespace slurs2.backend.Migrations
 
                     b.HasKey("SteamId");
 
-                    b.ToTable("Players");
+                    b.ToTable("Players", (string)null);
                 });
 
             modelBuilder.Entity("slurs2.backend.Models.ProcessedLog", b =>
@@ -49,7 +49,7 @@ namespace slurs2.backend.Migrations
 
                     b.HasKey("LogId");
 
-                    b.ToTable("ProcessedLogs");
+                    b.ToTable("ProcessedLogs", (string)null);
                 });
 
             modelBuilder.Entity("slurs2.backend.Models.SlurInstance", b =>
@@ -88,7 +88,7 @@ namespace slurs2.backend.Migrations
 
                     b.HasIndex("PlayerSteamId");
 
-                    b.ToTable("SlurInstances");
+                    b.ToTable("SlurInstances", (string)null);
                 });
 
             modelBuilder.Entity("slurs2.backend.Models.SlurInstance", b =>

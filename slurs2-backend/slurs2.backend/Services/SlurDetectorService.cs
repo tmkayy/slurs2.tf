@@ -1,25 +1,22 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using slurs2.backend.ApiClients;
 using slurs2.backend.Models;
 
 namespace slurs2.backend.Services;
 
-public class SlurDetectorService
+public class SlurDetectorService(IClassifierApi classifierApi)
 {
     private class SlurList
     {
-        public List<string> Slurs { get; init; } = [];
         public List<string> SpicyWords { get; init; } = [];
     }
-    
-    private static Regex BuildPattern(string word) =>
-        new($@"\b{Regex.Escape(word)}\w*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private record SlurPattern(Regex Pattern, SlurType Type);
+    private record SlurPattern(Regex Pattern);
+    private readonly List<SlurPattern> _spicyPatterns = LoadSpicyPatterns();
 
-    private readonly List<SlurPattern> _patterns;
-
-    public SlurDetectorService()
+    private static List<SlurPattern> LoadSpicyPatterns()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "slurs.json");
         var json = File.ReadAllText(path);
@@ -28,40 +25,51 @@ public class SlurDetectorService
             PropertyNameCaseInsensitive = true
         })!;
 
-        _patterns = new List<SlurPattern>();
-
-        foreach (var word in data.Slurs)
-            _patterns.Add(new SlurPattern(BuildPattern(word), SlurType.Slur));
-
-        foreach (var word in data.SpicyWords)
-            _patterns.Add(new SlurPattern(BuildPattern(word), SlurType.SpicyWord));
+        return data.SpicyWords.Select(w => new SlurPattern(BuildPattern(w))).ToList();
     }
 
-    public SlurDetectionResult Analyze(string message)
+    private static Regex BuildPattern(string word)
     {
-        Console.WriteLine($"Analyzing: '{message}', patterns: {_patterns.Count}");
-        foreach (var p in _patterns)
-            Console.WriteLine($"  Pattern: {p.Pattern}, Type: {p.Type}");
-        
-        SlurType? highestType = null;
-        int count = 0;
-
-        foreach (var slurPattern in _patterns)
+        var sb = new StringBuilder();
+        foreach (var c in word)
         {
-            var matches = slurPattern.Pattern.Matches(message);
-            if (matches.Count == 0) continue;
+            switch (char.ToLower(c))
+            {
+                case 'a': sb.Append("[a@4]"); break;
+                case 'e': sb.Append("[e3]"); break;
+                case 'i': sb.Append("[i1!]"); break;
+                case 'o': sb.Append("[o0]"); break;
+                case 'u': sb.Append("[u]"); break;
+                case 'g': sb.Append("[g9]"); break;
+                case 's': sb.Append("[s$5]"); break;
+                case ' ': sb.Append(@"[\s\-_]*"); break;
+                default: sb.Append(Regex.Escape(c.ToString())); break;
+            }
+        }
+        var pattern = word.Contains(' ') ? $@"\b{sb}\b" : $@"\b{sb}\w*";
+        return new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    }
 
-            count += matches.Count;
+    public async Task<SlurDetectionResult> AnalyzeAsync(string message)
+    {
+        int spicyCount = _spicyPatterns.Sum(p => p.Pattern.Matches(message).Count);
 
-            if (highestType == null || slurPattern.Type == SlurType.Slur)
-                highestType = slurPattern.Type;
+        try
+        {
+            var classification = await classifierApi.Classify(new ClassifierRequest { Text = message });
+            var isSlur = classification.Label == "offensive" && classification.Score > 0.85f;
+
+            if (isSlur)
+                return new SlurDetectionResult { Found = true, Type = SlurType.Slur, Count = Math.Max(1, spicyCount) };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Classifier failed: {ex.Message}");
         }
 
-        return new SlurDetectionResult
-        {
-            Found = count > 0,
-            Type = highestType,
-            Count = count
-        };
+        if (spicyCount > 0)
+            return new SlurDetectionResult { Found = true, Type = SlurType.SpicyWord, Count = spicyCount };
+
+        return new SlurDetectionResult { Found = false, Type = null, Count = 0 };
     }
 }

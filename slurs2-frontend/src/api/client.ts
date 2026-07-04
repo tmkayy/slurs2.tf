@@ -8,8 +8,8 @@ const client = axios.create({
 export const getLeaderboard = () =>
     client.get<PlayerSummary[]>('/players').then(r=>r.data);
 
-export const getPlayer = (steamId: string) => 
-    client.get<PlayerDetail>('/players/${steamId}').then(r=>r.data);
+export const getPlayer = (steamId: string) =>
+    client.get<PlayerDetail>(`/players/${steamId}`).then(r => r.data);
 
 export const scanPlayer = (steamId: string) =>
-    client.post('players/${steamId}/scan').then(r=>r.data);
+    client.post(`/players/${steamId}/scan`).then(r => r.data);
