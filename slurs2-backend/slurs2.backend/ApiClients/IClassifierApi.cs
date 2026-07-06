@@ -5,8 +5,14 @@ namespace slurs2.backend.ApiClients;
 
 public interface IClassifierApi
 {
-    [Post("/classify")]
-    Task<ClassifierResponse> Classify([Body] ClassifierRequest request);
+    [Post("/classify-batch")]
+    Task<List<ClassifierResponse>> ClassifyBatch([Body] ClassifierBatchRequest request);
+
+    public class ClassifierBatchRequest
+    {
+        [JsonPropertyName("texts")]
+        public List<string> Texts { get; set; } = [];
+    }
 }
 
 public class ClassifierRequest

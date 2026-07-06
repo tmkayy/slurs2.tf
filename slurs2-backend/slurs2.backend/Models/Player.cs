@@ -17,4 +17,5 @@ public class Player
 
     public ICollection<SlurInstance> SlurInstances { get; set; } = [];
     
+    public int? LastScannedLogId { get; set; }
 }

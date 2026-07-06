@@ -10,13 +10,14 @@ namespace slurs2.backend.Controllers;
 
 [ApiController]
 [Route("api/players")]
-public class PlayersController(AppDbContext db, PlayerScannerService playerScannerService) : ControllerBase
+public class PlayersController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetLeaderBoard()
     {
         var players = await db.Players
             .Include(p => p.SlurInstances)
+            .Where(p => p.SlurInstances.Any(s => s.SlurType == SlurType.Slur))
             .OrderByDescending(p => p.SlurInstances.Count(s=> s.SlurType == SlurType.Slur))
             .ToListAsync();
 
@@ -38,6 +39,7 @@ public class PlayersController(AppDbContext db, PlayerScannerService playerScann
         var players = await db.Players
             .Where(p=>p.Country == country)
             .Include(p=>p.SlurInstances)
+            .Where(p => p.SlurInstances.Any(s => s.SlurType == SlurType.Slur))
             .OrderByDescending(p => p.SlurInstances.Count(s=> s.SlurType == SlurType.Slur))
             .ToListAsync();
         

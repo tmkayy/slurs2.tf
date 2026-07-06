@@ -17,30 +17,63 @@ public class PlayerScannerService (LogsFetcherService logsFetcherService,
     
     public async Task ScanPlayer(string steamId)
     {
-        await playerService.GetOrCreatePlayerAsync(steamId);
+        var player = await playerService.GetOrCreatePlayerAsync(steamId);
         var logs = await logsFetcherService.GetLogIdsForPlayer(steamId);
+
+        var newLogs = player.LastScannedLogId.HasValue?
+            logs.Where(l => l.Id == player.LastScannedLogId.Value).ToList() : logs;
+
+        if (!newLogs.Any())
+            return;
+        
+        var processedSteamIds = new HashSet<string>() {steamId};
         int batchSize = 0;
+        var semaphore = new SemaphoreSlim(5);
     
-        foreach (var (logId, logDate) in logs)
+        foreach (var (logId, logDate) in newLogs)
         {
             var alreadyProcessed = await db.ProcessedLogs.AnyAsync(l => l.LogId == logId);
             if (alreadyProcessed) continue;
-    
-            var messages = await logsFetcherService.GetChatMessages(logId);
-            await Task.Delay(100);
-    
+            
+            await semaphore.WaitAsync();
+            List<ApiResponses.ChatMessage> messages;
+            try
+            {
+                messages = await logsFetcherService.GetChatMessages(logId);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+
+            var validMessages = messages
+                .Where(m => m.Steamid != "Console" && m.Msg.Length >= 3).ToList();
+
+            if (!validMessages.Any())
+            {
+                db.ProcessedLogs.Add(new ProcessedLog { LogId = logId, });
+                batchSize++;
+                continue;
+            }
+
+            var texts = validMessages.Select(m => m.Msg).ToList();
+            var classifications = await slurDetectorService.AnalyzeBatchAsync(texts);
             db.ProcessedLogs.Add(new ProcessedLog { LogId = logId });
             
-            foreach (var message in messages)
+            for (int i = 0; i < validMessages.Count; i++)
             {
-                if (message.Steamid == "Console") continue;
-    
-                var result = await slurDetectorService.AnalyzeAsync(message.Msg);
+                var message = validMessages[i];
+                var result = classifications[i];
                 if (!result.Found) continue;
-    
+
                 var msgSteamId64 = ToSteamId64(message.Steamid);
-                await playerService.GetOrCreatePlayerAsync(msgSteamId64);
-    
+
+                if (!processedSteamIds.Contains(msgSteamId64))
+                {
+                    await playerService.GetOrCreatePlayerAsync(msgSteamId64);
+                    processedSteamIds.Add(msgSteamId64);
+                }
+
                 db.SlurInstances.Add(new SlurInstance(
                     message.Msg,
                     logId,
@@ -50,15 +83,16 @@ public class PlayerScannerService (LogsFetcherService logsFetcherService,
                     result.Type!.Value
                 ));
             }
+            
             batchSize++;
-    
             if (batchSize >= 50)
             {
                 await db.SaveChangesAsync();
                 batchSize = 0;
             }
         }
-    
+        
+        player.LastScannedLogId = newLogs.Max(l => l.Id);
         await db.SaveChangesAsync();
     }
 }

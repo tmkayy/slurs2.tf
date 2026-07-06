@@ -12,6 +12,8 @@ public class SlurDetectorService(IClassifierApi classifierApi)
     {
         public List<string> SpicyWords { get; init; } = [];
     }
+    
+    private static readonly HashSet<string> ExactMatchWords = ["hell"];
 
     private record SlurPattern(Regex Pattern);
     private readonly List<SlurPattern> _spicyPatterns = LoadSpicyPatterns();
@@ -46,30 +48,39 @@ public class SlurDetectorService(IClassifierApi classifierApi)
                 default: sb.Append(Regex.Escape(c.ToString())); break;
             }
         }
-        var pattern = word.Contains(' ') ? $@"\b{sb}\b" : $@"\b{sb}\w*";
+        var pattern = word.Contains(' ') || ExactMatchWords.Contains(word.ToLower())
+            ? $@"\b{sb}\b"
+            : $@"\b{sb}\w*";
         return new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
     }
 
-    public async Task<SlurDetectionResult> AnalyzeAsync(string message)
+    public async Task<List<SlurDetectionResult>> AnalyzeBatchAsync(List<string> messages)
     {
-        int spicyCount = _spicyPatterns.Sum(p => p.Pattern.Matches(message).Count);
+        var spicyCounts = messages.Select(m => _spicyPatterns
+            .Sum(p => p.Pattern.Matches(m).Count)).ToList();
 
         try
         {
-            var classification = await classifierApi.Classify(new ClassifierRequest { Text = message });
-            var isSlur = classification.Label == "offensive" && classification.Score > 0.85f;
-
-            if (isSlur)
-                return new SlurDetectionResult { Found = true, Type = SlurType.Slur, Count = Math.Max(1, spicyCount) };
+            var classifications = await classifierApi.ClassifyBatch(
+                new IClassifierApi.ClassifierBatchRequest { Texts = messages });
+            
+            return messages.Select((_, i) =>
+            {
+                var isSlur = classifications[i].Label == "HATE" && classifications[i].Score > 0.90f;
+                if (isSlur)
+                    return new SlurDetectionResult { Found = true, Type = SlurType.Slur, Count = Math.Max(1, spicyCounts[i]) };
+                if (spicyCounts[i] > 0)
+                    return new SlurDetectionResult { Found = true, Type = SlurType.SpicyWord, Count = spicyCounts[i] };
+                return new SlurDetectionResult { Found = false, Type = null, Count = 0 };
+            }).ToList();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Classifier failed: {ex.Message}");
+            return messages.Select((_,i) =>
+                spicyCounts[i]>0 ?
+                    new SlurDetectionResult {Found = true, Type = SlurType.SpicyWord, Count = spicyCounts[i]}
+                    : new SlurDetectionResult {Found = false, Type = null, Count = 0}).ToList();
         }
-
-        if (spicyCount > 0)
-            return new SlurDetectionResult { Found = true, Type = SlurType.SpicyWord, Count = spicyCount };
-
-        return new SlurDetectionResult { Found = false, Type = null, Count = 0 };
     }
 }
