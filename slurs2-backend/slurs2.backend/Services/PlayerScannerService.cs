@@ -67,7 +67,6 @@ public class PlayerScannerService (LogsFetcherService logsFetcherService,
                 if (!result.Found) continue;
 
                 var msgSteamId64 = ToSteamId64(message.Steamid);
-
                 if (!processedSteamIds.Contains(msgSteamId64))
                 {
                     await playerService.GetOrCreatePlayerAsync(msgSteamId64);
