@@ -66,7 +66,7 @@ public class SlurDetectorService(IClassifierApi classifierApi)
             
             return messages.Select((_, i) =>
             {
-                var isSlur = classifications[i].Label == "HATE" && classifications[i].Score > 0.80f;
+                var isSlur = classifications[i].Label == "HATE" && classifications[i].Score > 0.90f;
                 if (isSlur)
                     return new SlurDetectionResult { Found = true, Type = SlurType.Slur, Count = Math.Max(1, spicyCounts[i]) };
                 if (spicyCounts[i] > 0)
