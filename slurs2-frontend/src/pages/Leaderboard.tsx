@@ -162,6 +162,18 @@ function buildCountryStats(players: PlayerSummary[]) {
   return [...totals.values()].sort((a, b) => b.count - a.count);
 }
 
+function getCountryPlayers(countryName: string, players: PlayerSummary[]) {
+  const normalizedName = normalizeCountry(countryName);
+  const aliases = COUNTRY_ALIASES[normalizedName] ?? [];
+
+  return players
+    .filter(player => {
+      const normalizedCountry = normalizeCountry(player.country?.trim() || 'Unknown');
+      return normalizedCountry === normalizedName || aliases.includes(normalizedCountry);
+    })
+    .sort((a, b) => b.slurCount - a.slurCount || a.rank - b.rank);
+}
+
 function findCountryStat(countryName: string, countryStats: CountryStat[]) {
   const normalizedName = normalizeCountry(countryName);
   const aliases = COUNTRY_ALIASES[normalizedName] ?? [];
@@ -186,6 +198,8 @@ export default function Leaderboard() {
   const [countries, setCountries] = useState<CountryFeature[]>([]);
   const [loading, setLoading] = useState(true);
   const [mapLoading, setMapLoading] = useState(true);
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
+  const [showAllCountries, setShowAllCountries] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -209,6 +223,11 @@ export default function Leaderboard() {
 
   const countryStats = useMemo(() => buildCountryStats(players), [players]);
   const maxCountryCount = Math.max(...countryStats.map(stat => stat.count), 1);
+  const visibleCountryStats = showAllCountries ? countryStats : countryStats.slice(0, 8);
+  const selectedCountryPlayers = useMemo(
+    () => (selectedCountry ? getCountryPlayers(selectedCountry, players) : []),
+    [players, selectedCountry],
+  );
   const mapPath = useMemo(() => {
     const projection = geoEqualEarth()
       .scale(178)
@@ -235,7 +254,18 @@ export default function Leaderboard() {
           <div>
             <h2 className="country-panel-title">Slurs by Country</h2>
           </div>
-          <span className="badge">hurt people with passion</span>
+          <div className="section-heading-actions">
+            {countryStats.length > 8 && (
+              <button
+                type="button"
+                className="view-all-button"
+                onClick={() => setShowAllCountries(value => !value)}
+              >
+                {showAllCountries ? 'Show less' : 'View all'}
+              </button>
+            )}
+            <span className="badge">hurt people with passion</span>
+          </div>
         </div>
 
         {loading ? (
@@ -266,6 +296,13 @@ export default function Leaderboard() {
                         strokeWidth={0.45}
                         tabIndex={0}
                         aria-label={stat ? `${countryName}: ${stat.count}` : `${countryName}: 0`}
+                        onClick={() => stat && setSelectedCountry(stat.country)}
+                        onKeyDown={event => {
+                          if ((event.key === 'Enter' || event.key === ' ') && stat) {
+                            event.preventDefault();
+                            setSelectedCountry(stat.country);
+                          }
+                        }}
                       >
                         <title>{stat ? `${countryName}: ${stat.count}` : `${countryName}: 0`}</title>
                       </path>
@@ -281,13 +318,18 @@ export default function Leaderboard() {
             </div>
 
             <div className="country-rankings">
-              {countryStats.slice(0, 8).map(stat => {
+              {visibleCountryStats.map(stat => {
                 const intensity = stat.count / maxCountryCount;
                 const countryCode = getCountryCode(stat.country);
                 const countryLabel = countryCode ? flagEmoji(countryCode) : stat.country;
 
                 return (
-                  <div className="country-row" key={stat.country}>
+                  <button
+                    type="button"
+                    className="country-row"
+                    key={stat.country}
+                    onClick={() => setSelectedCountry(stat.country)}
+                  >
                     <span className="country-flag" aria-label={stat.country}>
                       {countryLabel}
                       <span className="country-code">{countryCode}</span>
@@ -296,7 +338,7 @@ export default function Leaderboard() {
                       <span style={{ width: `${Math.max(8, intensity * 100)}%` }} />
                     </div>
                     <strong>{stat.count}</strong>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -304,11 +346,48 @@ export default function Leaderboard() {
         )}
       </section>
 
+      {selectedCountry && (
+        <div className="country-modal-backdrop" role="dialog" aria-modal="true" onClick={() => setSelectedCountry(null)}>
+          <div className="country-modal" onClick={event => event.stopPropagation()}>
+            <div className="country-modal-header">
+              <div className="country-modal-title-wrap">
+                <p className="eyebrow">Local leaderboard</p>
+                <h3>
+                  <span className="country-modal-flag">
+                    {flagEmoji(getCountryCode(selectedCountry))}
+                  </span>
+                  <span className="country-modal-code">{getCountryCode(selectedCountry)}</span>
+                </h3>
+              </div>
+              <button type="button" className="modal-close" onClick={() => setSelectedCountry(null)}>
+                Close
+              </button>
+            </div>
+            <div className="country-modal-list">
+              {selectedCountryPlayers.length > 0 ? (
+                selectedCountryPlayers.map(player => (
+                  <button
+                    key={player.steamId}
+                    type="button"
+                    className="country-player-row"
+                    onClick={() => navigate(`/player/${player.steamId}`)}
+                  >
+                    <span>{player.steamName}</span>
+                    <strong>{player.slurCount}</strong>
+                  </button>
+                ))
+              ) : (
+                <p className="status-text">No players logged for this country yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="content-panel">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Current Intel</p>
-            <h2>Top Offenders</h2>
+            <h2>Leaderboard</h2>
           </div>
           <span className="badge">{players.length} players</span>
         </div>
