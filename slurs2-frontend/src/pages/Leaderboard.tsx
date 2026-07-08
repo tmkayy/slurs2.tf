@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import { geoEqualEarth, geoPath, type GeoPermissibleObjects } from 'd3-geo';
 import { feature as topojsonFeature } from 'topojson-client';
 import type { GeometryCollection, Objects, Topology } from 'topojson-specification';
@@ -24,6 +24,7 @@ interface WorldAtlasObjects extends Objects {
 
 type WorldAtlasTopology = Topology<WorldAtlasObjects>;
 
+const TOP_LEADERBOARD_LIMIT = 20;
 const geoUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
 const COUNTRY_ALIASES: Record<string, string[]> = {
@@ -144,6 +145,24 @@ function flagEmoji(code: string) {
   return String.fromCodePoint(...code.toUpperCase().split('').map(char => 0x1f1e6 + char.charCodeAt(0) - 65));
 }
 
+function CountryBadge({ country, className = 'leaderboard-country-badge' }: { country?: string | null; className?: string }) {
+  const resolvedCountry = country?.trim() || '';
+
+  if (!resolvedCountry) {
+    return <span className={className}>-</span>;
+  }
+
+  const countryCode = getCountryCode(resolvedCountry);
+  const countryLabel = countryCode ? flagEmoji(countryCode) : '🏳️';
+
+  return (
+    <span className={className} aria-label={resolvedCountry}>
+      <span className="leaderboard-country-flag">{countryLabel}</span>
+      <span className="leaderboard-country-code">{countryCode}</span>
+    </span>
+  );
+}
+
 function buildCountryStats(players: PlayerSummary[]) {
   const totals = new Map<string, CountryStat>();
 
@@ -193,13 +212,23 @@ function getCountryFill(count: number, maxCount: number) {
   return `hsl(4 ${saturation}% ${lightness}%)`;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 export default function Leaderboard() {
   const [players, setPlayers] = useState<PlayerSummary[]>([]);
   const [countries, setCountries] = useState<CountryFeature[]>([]);
   const [loading, setLoading] = useState(true);
   const [mapLoading, setMapLoading] = useState(true);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
+  const [isClosingModal, setIsClosingModal] = useState(false);
   const [showAllCountries, setShowAllCountries] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isDraggingMap, setIsDraggingMap] = useState(false);
+  const dragStateRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -221,6 +250,23 @@ export default function Leaderboard() {
       .finally(() => setMapLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!selectedCountry) {
+      return;
+    }
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [selectedCountry]);
+
   const countryStats = useMemo(() => buildCountryStats(players), [players]);
   const maxCountryCount = Math.max(...countryStats.map(stat => stat.count), 1);
   const visibleCountryStats = showAllCountries ? countryStats : countryStats.slice(0, 8);
@@ -228,6 +274,11 @@ export default function Leaderboard() {
     () => (selectedCountry ? getCountryPlayers(selectedCountry, players) : []),
     [players, selectedCountry],
   );
+  const visibleSelectedCountryPlayers = useMemo(
+    () => selectedCountryPlayers.slice(0, TOP_LEADERBOARD_LIMIT),
+    [selectedCountryPlayers],
+  );
+  const topPlayers = useMemo(() => players.slice(0, TOP_LEADERBOARD_LIMIT), [players]);
   const mapPath = useMemo(() => {
     const projection = geoEqualEarth()
       .scale(178)
@@ -236,16 +287,100 @@ export default function Leaderboard() {
     return geoPath(projection);
   }, []);
 
+  const handleZoom = (delta: number) => {
+    setZoomLevel(current => clamp(current + delta, 1, 6));
+  };
+
+  const handleMapWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
+    if (!event.ctrlKey) {
+      return;
+    }
+
+    event.preventDefault();
+    handleZoom(event.deltaY < 0 ? 0.15 : -0.15);
+  };
+
+  const handleMapPointerDown = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (event.button !== 0 || zoomLevel <= 1) {
+      return;
+    }
+
+    event.preventDefault();
+    setIsDraggingMap(true);
+    dragStateRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      panX,
+      panY,
+    };
+  };
+
+  const handleMapPointerMove = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (!isDraggingMap || !dragStateRef.current) {
+      return;
+    }
+
+    const deltaX = event.clientX - dragStateRef.current.startX;
+    const deltaY = event.clientY - dragStateRef.current.startY;
+
+    const nextPanX = dragStateRef.current.panX + deltaX;
+    const nextPanY = dragStateRef.current.panY + deltaY;
+
+    setPanX(nextPanX);
+    setPanY(nextPanY);
+    dragStateRef.current = {
+      ...dragStateRef.current,
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: nextPanX,
+      panY: nextPanY,
+    };
+  };
+
+  const handleMapPointerUp = () => {
+    if (dragStateRef.current) {
+      dragStateRef.current = null;
+    }
+
+    setIsDraggingMap(false);
+  };
+
+  const closeSelectedCountry = () => {
+    if (!selectedCountry) {
+      return;
+    }
+
+    setIsClosingModal(true);
+    window.setTimeout(() => {
+      setSelectedCountry(null);
+      setIsClosingModal(false);
+    }, 180);
+  };
+
   return (
     <div className="page-shell">
       <header className="site-hero">
-        <div className="hero-logo-lockup">
-          <h1 className="tf2-logo" aria-label="slurs2.tf">
-            <span>slurs</span>
-            <small>2</small>
-            <span>.tf</span>
-          </h1>
-          <p className="tf2-tagline">The most fun you can have online</p>
+        <div className="hero-logo-lockup" style={{ 
+          background: 'transparent', 
+          border: 'none', 
+          boxShadow: 'none',
+          transform: 'none',
+          padding: 0,
+          width: '100%'
+        }}>
+          <img 
+            src="/Slurs_tf2_logo.png" 
+            alt="slurs2.tf" 
+            className="site-logo"
+            style={{ 
+              maxWidth: '1500px', 
+              width: '100%', 
+              height: 'auto',
+              display: 'block',
+              margin: '0 auto'
+            }}
+          />
+          <p className="tf2-tagline" style={{ marginTop: '-98px' }}>The most fun you can have online</p>
         </div>
       </header>
 
@@ -276,38 +411,50 @@ export default function Leaderboard() {
               {mapLoading ? (
                 <p className="map-loading">Loading map data...</p>
               ) : (
-                <svg viewBox="0 0 960 480" role="img" aria-label="World map showing slur totals by country">
-                  {countries.map(country => {
-                    const countryName = country.properties?.name ?? '';
-                    const stat = findCountryStat(countryName, countryStats);
-                    const fill = stat ? getCountryFill(stat.count, maxCountryCount) : '#3a332d';
-                    const pathData = mapPath(country as GeoPermissibleObjects);
+                <svg
+                  viewBox="0 0 960 480"
+                  role="img"
+                  aria-label="World map showing slur totals by country"
+                  onWheel={handleMapWheel}
+                  onMouseDown={handleMapPointerDown}
+                  onMouseMove={handleMapPointerMove}
+                  onMouseUp={handleMapPointerUp}
+                  onMouseLeave={handleMapPointerUp}
+                  style={{ cursor: isDraggingMap ? 'grabbing' : zoomLevel > 1 ? 'grab' : 'default' }}
+                >
+                  <g transform={`translate(${480 + panX} ${240 + panY}) scale(${zoomLevel}) translate(-480 -240)`}>
+                    {countries.map(country => {
+                      const countryName = country.properties?.name ?? '';
+                      const stat = findCountryStat(countryName, countryStats);
+                      const fill = stat ? getCountryFill(stat.count, maxCountryCount) : '#3a332d';
+                      const pathData = mapPath(country as GeoPermissibleObjects);
 
-                    if (!pathData) {
-                      return null;
-                    }
+                      if (!pathData) {
+                        return null;
+                      }
 
-                    return (
-                      <path
-                        key={country.id ?? countryName}
-                        d={pathData}
-                        fill={fill}
-                        stroke="#1f1815"
-                        strokeWidth={0.45}
-                        tabIndex={0}
-                        aria-label={stat ? `${countryName}: ${stat.count}` : `${countryName}: 0`}
-                        onClick={() => stat && setSelectedCountry(stat.country)}
-                        onKeyDown={event => {
-                          if ((event.key === 'Enter' || event.key === ' ') && stat) {
-                            event.preventDefault();
-                            setSelectedCountry(stat.country);
-                          }
-                        }}
-                      >
-                        <title>{stat ? `${countryName}: ${stat.count}` : `${countryName}: 0`}</title>
-                      </path>
-                    );
-                  })}
+                      return (
+                        <path
+                          key={country.id ?? countryName}
+                          d={pathData}
+                          fill={fill}
+                          stroke="#1f1815"
+                          strokeWidth={0.45}
+                          tabIndex={0}
+                          aria-label={stat ? `${countryName}: ${stat.count}` : `${countryName}: 0`}
+                          onClick={() => stat && setSelectedCountry(stat.country)}
+                          onKeyDown={event => {
+                            if ((event.key === 'Enter' || event.key === ' ') && stat) {
+                              event.preventDefault();
+                              setSelectedCountry(stat.country);
+                            }
+                          }}
+                        >
+                          <title>{stat ? `${countryName}: ${stat.count}` : `${countryName}: 0`}</title>
+                        </path>
+                      );
+                    })}
+                  </g>
                 </svg>
               )}
               <div className="map-legend">
@@ -347,7 +494,12 @@ export default function Leaderboard() {
       </section>
 
       {selectedCountry && (
-        <div className="country-modal-backdrop" role="dialog" aria-modal="true" onClick={() => setSelectedCountry(null)}>
+        <div
+          className={`country-modal-backdrop${isClosingModal ? ' closing' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          onClick={closeSelectedCountry}
+        >
           <div className="country-modal" onClick={event => event.stopPropagation()}>
             <div className="country-modal-header">
               <div className="country-modal-title-wrap">
@@ -359,20 +511,26 @@ export default function Leaderboard() {
                   <span className="country-modal-code">{getCountryCode(selectedCountry)}</span>
                 </h3>
               </div>
-              <button type="button" className="modal-close" onClick={() => setSelectedCountry(null)}>
+              <button type="button" className="modal-close" onClick={closeSelectedCountry}>
                 Close
               </button>
             </div>
-            <div className="country-modal-list">
-              {selectedCountryPlayers.length > 0 ? (
-                selectedCountryPlayers.map(player => (
+            <div
+              className="country-modal-list"
+              onWheel={event => event.stopPropagation()}
+            >
+              {visibleSelectedCountryPlayers.length > 0 ? (
+                visibleSelectedCountryPlayers.map(player => (
                   <button
                     key={player.steamId}
                     type="button"
                     className="country-player-row"
                     onClick={() => navigate(`/player/${player.steamId}`)}
                   >
-                    <span>{player.steamName}</span>
+                    <span className="country-player-main">
+                      <span className="country-player-rank">#{player.rank}</span>
+                      <span>{player.steamName}</span>
+                    </span>
                     <strong>{player.slurCount}</strong>
                   </button>
                 ))
@@ -399,18 +557,20 @@ export default function Leaderboard() {
             <table>
               <thead>
                 <tr>
-                  <th>Rank</th>
+                  <th className="leaderboard-rank-header">Rank</th>
                   <th>Player</th>
                   <th>Country</th>
                   <th>Slur Count</th>
                 </tr>
               </thead>
               <tbody>
-                {players.map(p => (
+                {topPlayers.map(p => (
                   <tr className="leaderboard-row" key={p.steamId} onClick={() => navigate(`/player/${p.steamId}`)}>
-                    <td>#{p.rank}</td>
+                    <td className="leaderboard-rank-cell">#{p.rank}</td>
                     <td>{p.steamName}</td>
-                    <td>{p.country ?? '-'}</td>
+                    <td>
+                      <CountryBadge country={p.country} />
+                    </td>
                     <td>{p.slurCount}</td>
                   </tr>
                 ))}
