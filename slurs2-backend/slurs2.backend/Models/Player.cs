@@ -14,6 +14,8 @@ public class Player
 
     [MaxLength(64)]
     public string? Country { get; set; }
+    
+    public DateTime? LastScannedLogDate { get; set; }
 
     public ICollection<SlurInstance> SlurInstances { get; set; } = [];
     

@@ -144,6 +144,17 @@ export default function PlayerProfile() {
               <span className="player-country-flag">{flagEmoji(getCountryCode(player.country ?? 'Unknown'))}</span>
               <span className="player-country-code">{getCountryCode(player.country ?? 'Unknown')}</span>
             </span>
+            {player.lastScannedLogDate && (
+              <span className="player-country-badge" style={{ marginLeft: '8px' }}>
+                <span className="player-country-code" style={!player.lastScannedLogDate ? { color: '#b33a2f' } : {}}>
+                  {player.lastScannedLogDate
+                    ? `Last scanned ${new Date(player.lastScannedLogDate).toLocaleDateString('en-GB', { 
+                        day: 'numeric', month: 'short', year: 'numeric' 
+                      })}`
+                    : 'Never scanned'}
+                </span>
+              </span>
+            )}
           </p>
         </div>
         <div className="profile-links">

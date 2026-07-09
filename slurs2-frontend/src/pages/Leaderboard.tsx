@@ -380,7 +380,7 @@ export default function Leaderboard() {
               margin: '0 auto'
             }}
           />
-          <p className="tf2-tagline" style={{ marginTop: '-98px' }}>The most fun you can have online</p>
+          <p className="tf2-tagline" style={{ marginTop: '-28px' }}>The most fun you can have online</p>
         </div>
       </header>
 

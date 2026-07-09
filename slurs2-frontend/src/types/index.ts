@@ -20,4 +20,5 @@ export interface PlayerDetail {
   steamName: string;
   country: string | null;
   slurInstances: SlurInstance[];
+  lastScannedLogDate: string | null;
 }
