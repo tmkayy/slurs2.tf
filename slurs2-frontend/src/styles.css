@@ -267,8 +267,9 @@ a {
   position: absolute;
   z-index: 1;
   min-width: min(100%, 420px);
-  margin: 22px 0 0;
-  padding: 8px 28px;
+  /* Position responsively: anchor near the bottom-center of the lockup so it remains visible
+     when the logo image scales down. */
+  padding: 12px 36px;
   color: #4b4a46;
   background: linear-gradient(180deg, #ded8c7, #a89f8c);
   border: 2px solid rgba(255, 255, 255, 0.36);
@@ -277,11 +278,46 @@ a {
     inset 0 1px 0 rgba(255, 255, 255, 0.62),
     0 4px 0 rgba(69, 42, 24, 0.42);
   font-family: var(--tf2-build);
-  font-size: clamp(1rem, 2.2vw, 1.35rem);
   font-weight: 800;
   line-height: 1.1;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
+
+  /* Anchor to bottom center of the lockup; use percentage-based bottom so the tagline
+     keeps the same relative position across viewports (matches 1920x1080 layout better). */
+  left: 50%;
+  /* Move it higher to sit closer to the logo */
+  bottom: 10%;
+  /* Tilt slightly to the left and use bottom as the rotation pivot so it leans toward the logo */
+  transform-origin: center bottom;
+  transform: translateX(-50%) rotate(-4deg);
+  /* Slightly larger but still constrained and less aggressive scaling */
+  font-size: clamp(1.1rem, 1.2vw, 1.5rem);
+}
+
+
+.scan-button {
+  background-color: #dc3545 !important;
+  color: white !important;
+  border: none;
+  min-height: 42px;
+  padding: 10px 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: var(--tf2-build);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: background 0.3s;
+}
+
+.scan-button:hover:not(:disabled) {
+  background-color: #c82333 !important;
+}
+
+.scan-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .eyebrow {
@@ -373,6 +409,62 @@ h2 {
   font-weight: 900;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.scan-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  margin-top: 8px;
+  margin-left: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 234, 215, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--paper);
+  font-family: var(--tf2-build);
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scan-status::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.scan-status-idle {
+  color: #d1cdbe;
+}
+
+.scan-status-scanning {
+  color: #f0ca82;
+  animation: scan-pulse 1.2s ease-in-out infinite;
+}
+
+.scan-status-complete {
+  color: #a7f0b7;
+}
+
+@keyframes scan-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.75;
+    transform: scale(1.02);
+  }
 }
 
 .search-panel {

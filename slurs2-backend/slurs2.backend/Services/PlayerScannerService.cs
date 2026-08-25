@@ -91,8 +91,8 @@ public class PlayerScannerService (LogsFetcherService logsFetcherService,
             }
         }
         
-        player.LastScannedLogId = newLogs.Max(l => l.Id);
-        player.LastScannedLogDate = DateTimeOffset.FromUnixTimeSeconds(newLogs.MaxBy(l => l.Id).Date).UtcDateTime;
+        var maxLog = newLogs.MaxBy(l => l.Id);
+        await playerService.UpdateScanMetadata(steamId, maxLog.Id);
         await db.SaveChangesAsync();
     }
 }

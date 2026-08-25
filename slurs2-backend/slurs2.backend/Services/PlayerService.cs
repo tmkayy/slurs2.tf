@@ -105,4 +105,14 @@ public class PlayerService
         await db.SaveChangesAsync();
         return player;
     }
+    
+    public async Task UpdateScanMetadata(string steamId, int lastScannedLogId)
+    {
+        var player = await db.Players.FirstOrDefaultAsync(p => p.SteamId == steamId);
+        if (player == null) return;
+    
+        player.LastScannedAt = DateTime.UtcNow;
+        player.LastScannedLogId = lastScannedLogId;
+        await db.SaveChangesAsync();
+    }
 }

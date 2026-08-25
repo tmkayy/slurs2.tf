@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { getPlayer } from '../api/client';
+import { getPlayer, scanPlayer } from '../api/client';
 import type { PlayerDetail } from '../types';
 
 const COUNTRY_FLAG_CODES: Record<string, string> = {
@@ -106,13 +106,76 @@ export default function PlayerProfile() {
   const { steamId } = useParams<{ steamId: string }>();
   const [player, setPlayer] = useState<PlayerDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [scanState, setScanState] = useState<'idle' | 'scanning' | 'complete'>('idle');
   const [activeTab, setActiveTab] = useState<'slurs' | 'spicy'>('slurs');
 
   useEffect(() => {
     if (!steamId) return;
-    getPlayer(steamId)
-      .then(setPlayer)
-      .finally(() => setLoading(false));
+
+    const savedState = window.localStorage.getItem(`scan-state:${steamId}`) as 'idle' | 'scanning' | 'complete' | null;
+    if (savedState) {
+      setScanState(savedState);
+    }
+  }, [steamId]);
+
+  const fetchPlayer = async (id: string) => {
+    setLoading(true);
+    try {
+      const data = await getPlayer(id);
+      setPlayer(data);
+    } catch (error) {
+      console.error('Failed to fetch player:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const persistScanState = (nextState: 'idle' | 'scanning' | 'complete') => {
+    if (!steamId) return;
+    setScanState(nextState);
+    window.localStorage.setItem(`scan-state:${steamId}`, nextState);
+  };
+
+  const handleScan = async () => {
+    if (!steamId || scanning) return;
+
+    const previousLastScanned = player?.lastScannedAt || player?.lastScannedLogDate || null;
+
+    setScanning(true);
+    persistScanState('scanning');
+
+    try {
+      await scanPlayer(steamId);
+
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const refreshedPlayer = await getPlayer(steamId);
+        setPlayer(refreshedPlayer);
+
+        const refreshedLastScanned = refreshedPlayer.lastScannedAt || refreshedPlayer.lastScannedLogDate || null;
+
+        if (refreshedLastScanned && refreshedLastScanned !== previousLastScanned) {
+          persistScanState('complete');
+          return;
+        }
+
+        if (attempt < 11) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+
+      persistScanState('scanning');
+    } catch (error) {
+      console.error('Failed to scan player:', error);
+      persistScanState('scanning');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!steamId) return;
+    fetchPlayer(steamId);
   }, [steamId]);
 
   if (loading) {
@@ -132,6 +195,27 @@ export default function PlayerProfile() {
     );
   }
 
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'Never scanned';
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const lastScannedDate = player.lastScannedAt || player.lastScannedLogDate;
+  const scanStatusLabel =
+    scanState === 'scanning'
+      ? 'Scan in progress…'
+      : scanState === 'complete'
+        ? 'Scan complete'
+        : lastScannedDate
+          ? 'Scan complete'
+          : 'Never scanned';
+
   return (
     <div className="page-shell">
       <Link className="back-link" to="/">Back to leaderboard</Link>
@@ -140,24 +224,41 @@ export default function PlayerProfile() {
         <div>
           <h1>{player.steamName}</h1>
           <p className="hero-copy">
-            <span className="player-country-badge" aria-label={player.country ?? 'Unknown country'}>
-              <span className="player-country-flag">{flagEmoji(getCountryCode(player.country ?? 'Unknown'))}</span>
-              <span className="player-country-code">{getCountryCode(player.country ?? 'Unknown')}</span>
-            </span>
-            {player.lastScannedLogDate && (
-              <span className="player-country-badge" style={{ marginLeft: '8px' }}>
-                <span className="player-country-code" style={!player.lastScannedLogDate ? { color: '#b33a2f' } : {}}>
-                  {player.lastScannedLogDate
-                    ? `Last scanned ${new Date(player.lastScannedLogDate).toLocaleDateString('en-GB', { 
-                        day: 'numeric', month: 'short', year: 'numeric' 
-                      })}`
-                    : 'Never scanned'}
-                </span>
-              </span>
-            )}
+           <span className="player-country-badge" aria-label={player.country ?? 'Unknown country'}>
+             <span className="player-country-flag">{flagEmoji(getCountryCode(player.country ?? 'Unknown'))}</span>
+             <span className="player-country-code">{getCountryCode(player.country ?? 'Unknown')}</span>
+           </span>
+           <span className="player-country-badge" style={{ marginLeft: '8px' }}>
+             <span className="player-country-code">
+               Last scanned: {formatDate(lastScannedDate)}
+             </span>
+           </span>
+           {player.lastScannedLogDate && (
+             <span className="player-country-badge" style={{ marginLeft: '8px' }}>
+               <span className="player-country-code" style={{ color: '#666', fontSize: '0.85em' }}>
+                 (Log date: {formatDate(player.lastScannedLogDate)})
+               </span>
+             </span>
+           )}
+           <span
+             className={`scan-status ${scanState === 'scanning' ? 'scan-status-scanning' : scanState === 'complete' ? 'scan-status-complete' : 'scan-status-idle'}`}
+             aria-live="polite"
+             style={{ marginLeft: '8px' }}
+           >
+             {scanStatusLabel}
+           </span>
           </p>
         </div>
         <div className="profile-links">
+          <button
+           className="scan-button profile-link"
+           onClick={handleScan}
+           disabled={scanning}
+          >
+           <span className="profile-link-label">
+             {scanning ? 'Scanning...' : 'Scan Now'}
+           </span>
+          </button>
           <a className="steam-link profile-link" href={`https://steamcommunity.com/profiles/${player.steamId}`} target="_blank" rel="noreferrer">
             <span className="profile-link-logo" aria-hidden="true">
               <img src="/Steam_icon_logo.svg.webp" alt="" />
@@ -195,7 +296,7 @@ export default function PlayerProfile() {
             aria-selected={activeTab === 'slurs'}
             onClick={() => setActiveTab('slurs')}
           >
-            Slurs
+            Slurs ({player.slurInstances.filter(s => s.slurType === 0).length})
           </button>
           <button
             type="button"
@@ -204,7 +305,7 @@ export default function PlayerProfile() {
             aria-selected={activeTab === 'spicy'}
             onClick={() => setActiveTab('spicy')}
           >
-            Spicy Words
+            Spicy Words ({player.slurInstances.filter(s => s.slurType !== 0).length})
           </button>
         </div>
 

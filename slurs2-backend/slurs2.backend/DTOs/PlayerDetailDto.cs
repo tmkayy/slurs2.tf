@@ -7,5 +7,5 @@ public class PlayerDetailDto
     public string? Country { get; init; }
     public List<SlurInstanceDto> SlurInstances { get; init; } = [];
     
-    public DateTime? LastScannedLogDate { get; init; }
+    public DateTime? LastScannedAt { get; init; }
 }

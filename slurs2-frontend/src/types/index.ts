@@ -21,4 +21,5 @@ export interface PlayerDetail {
   country: string | null;
   slurInstances: SlurInstance[];
   lastScannedLogDate: string | null;
+  lastScannedAt: string | null;
 }

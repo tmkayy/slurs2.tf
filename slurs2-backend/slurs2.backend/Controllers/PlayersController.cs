@@ -69,6 +69,7 @@ public class PlayersController(AppDbContext db) : ControllerBase
             SteamId = player.SteamId,
             SteamName = player.SteamName,
             Country = player.Country,
+            LastScannedAt = player.LastScannedAt,
             SlurInstances = player.SlurInstances.Select(s => new SlurInstanceDto
             {
                 Message = s.Message,
