@@ -23,3 +23,10 @@ export interface PlayerDetail {
   lastScannedLogDate: string | null;
   lastScannedAt: string | null;
 }
+export interface ScanProgress {
+  processed: number;
+  total: number;
+  done: boolean;
+  failed: boolean;
+  cancelled: boolean;
+}

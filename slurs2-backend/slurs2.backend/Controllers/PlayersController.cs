@@ -82,22 +82,47 @@ public class PlayersController(AppDbContext db) : ControllerBase
         return Ok(dto);
     }
 
-    [HttpPost("{steamId}/scan")]
-    public IActionResult ScanPlayer(string steamId, [FromServices] IServiceScopeFactory scopeFactory)
+    [HttpGet("{steamId}/scan")]
+    public IActionResult GetScanProgress(string steamId, [FromServices] ScanProgressTracker tracker)
     {
+        var progress = tracker.Get(steamId);
+        return progress == null ? NotFound() : Ok(progress);
+    }
+
+    [HttpPost("{steamId}/scan")]
+    public IActionResult ScanPlayer(string steamId, [FromServices] IServiceScopeFactory scopeFactory,
+        [FromServices] ScanProgressTracker tracker)
+    {
+        // Don't start a second scan of the same player while one is running.
+        var cancellationToken = tracker.TryStart(steamId);
+        if (cancellationToken == null)
+            return Accepted();
+
         _ = Task.Run(async () =>
         {
             try
             {
                 using var scope = scopeFactory.CreateScope();
                 var scanner = scope.ServiceProvider.GetRequiredService<PlayerScannerService>();
-                await scanner.ScanPlayer(steamId);
+                await scanner.ScanPlayer(steamId, cancellationToken.Value);
+                tracker.Finish(steamId);
+            }
+            catch (OperationCanceledException)
+            {
+                tracker.Finish(steamId, cancelled: true);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Scan failed: {ex}");
+                tracker.Finish(steamId, failed: true);
             }
         });
         return Accepted();
+    }
+
+    [HttpPost("{steamId}/scan/cancel")]
+    public IActionResult CancelScan(string steamId, [FromServices] ScanProgressTracker tracker)
+    {
+        return tracker.Cancel(steamId) ? Accepted() : NotFound();
     }
 }

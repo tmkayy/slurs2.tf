@@ -27,28 +27,36 @@ builder.Services.AddRefitClient<ISteamApi>(refitSettings)
     .ConfigureHttpClient(c => c.BaseAddress = new Uri("https://api.steampowered.com"));
 
 builder.Services.AddRefitClient<IClassifierApi>(refitSettings)
-    .ConfigureHttpClient(c => c.BaseAddress = new Uri("http://localhost:8000"));
-
-builder.Services.AddSingleton<SlurDetectorService>();
-builder.Services.AddScoped<LogsFetcherService>();
-builder.Services.AddScoped<PlayerService>();
-builder.Services.AddScoped<PlayerScannerService>();
+    .ConfigureHttpClient(c => c.BaseAddress = new Uri(
+        builder.Configuration["ClassifierUrl"] ?? "http://localhost:8000"));
 
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:5173") // Vite's default port
+        policy.AllowAnyOrigin()
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
 });
+
+builder.Services.AddSingleton<SlurDetectorService>();
+builder.Services.AddSingleton<ScanProgressTracker>();
+builder.Services.AddScoped<LogsFetcherService>();
+builder.Services.AddScoped<PlayerService>();
+builder.Services.AddScoped<PlayerScannerService>();
 
 var app = builder.Build();
 
 app.UseCors();
 
 app.MapControllers();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
 
 app.Run();
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { getPlayer, scanPlayer } from '../api/client';
-import type { PlayerDetail } from '../types';
+import { cancelScan, getPlayer, getScanProgress, scanPlayer } from '../api/client';
+import type { PlayerDetail, ScanProgress } from '../types';
 
 const COUNTRY_FLAG_CODES: Record<string, string> = {
   'united states of america': 'US',
@@ -106,20 +106,44 @@ export default function PlayerProfile() {
   const { steamId } = useParams<{ steamId: string }>();
   const [player, setPlayer] = useState<PlayerDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [scanning, setScanning] = useState(false);
-  const [scanState, setScanState] = useState<'idle' | 'scanning' | 'complete'>('idle');
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [activeTab, setActiveTab] = useState<'slurs' | 'spicy'>('slurs');
+  const [cancelling, setCancelling] = useState(false);
+  const scanning = scanProgress !== null && !scanProgress.done;
 
+  // Pick up a scan that's already running, e.g. after a page reload.
   useEffect(() => {
     if (!steamId) return;
-
-    const savedState = window.localStorage.getItem(`scan-state:${steamId}`) as 'idle' | 'scanning' | 'complete' | null;
-    if (savedState) {
-      setScanState(savedState);
-    }
+    setScanProgress(null);
+    getScanProgress(steamId).then(setScanProgress).catch(() => {});
   }, [steamId]);
 
+  // Poll the scan's progress until it finishes, then reload the player.
+  useEffect(() => {
+    if (!steamId || !scanning) return;
+
+    const timer = window.setInterval(async () => {
+      try {
+        const next = await getScanProgress(steamId);
+        setScanProgress(next);
+
+        if (next.done) {
+          const refreshedPlayer = await getPlayer(steamId).catch(() => null);
+          if (refreshedPlayer) {
+            setPlayer(refreshedPlayer);
+          }
+        }
+      } catch {
+        // Ignore a failed poll and try again on the next tick.
+      }
+    }, 1500);
+
+    return () => window.clearInterval(timer);
+  }, [steamId, scanning]);
+
   const fetchPlayer = async (id: string) => {
+    // Clear the previous player so a failed lookup shows "not found" instead of them.
+    setPlayer(null);
     setLoading(true);
     try {
       const data = await getPlayer(id);
@@ -131,47 +155,56 @@ export default function PlayerProfile() {
     }
   };
 
-  const persistScanState = (nextState: 'idle' | 'scanning' | 'complete') => {
-    if (!steamId) return;
-    setScanState(nextState);
-    window.localStorage.setItem(`scan-state:${steamId}`, nextState);
-  };
-
   const handleScan = async () => {
     if (!steamId || scanning) return;
 
-    const previousLastScanned = player?.lastScannedAt || player?.lastScannedLogDate || null;
-
-    setScanning(true);
-    persistScanState('scanning');
+    setCancelling(false);
+    setScanProgress({ processed: 0, total: 0, done: false, failed: false, cancelled: false });
 
     try {
       await scanPlayer(steamId);
-
-      for (let attempt = 0; attempt < 12; attempt += 1) {
-        const refreshedPlayer = await getPlayer(steamId);
-        setPlayer(refreshedPlayer);
-
-        const refreshedLastScanned = refreshedPlayer.lastScannedAt || refreshedPlayer.lastScannedLogDate || null;
-
-        if (refreshedLastScanned && refreshedLastScanned !== previousLastScanned) {
-          persistScanState('complete');
-          return;
-        }
-
-        if (attempt < 11) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        }
-      }
-
-      persistScanState('scanning');
     } catch (error) {
       console.error('Failed to scan player:', error);
-      persistScanState('scanning');
-    } finally {
-      setScanning(false);
+      setScanProgress({ processed: 0, total: 0, done: true, failed: true, cancelled: false });
     }
   };
+
+  // The scan stops after the log it's working on; polling picks up the "cancelled" result.
+  const handleCancel = async () => {
+    if (!steamId || !scanning || cancelling) return;
+
+    setCancelling(true);
+    try {
+      await cancelScan(steamId);
+    } catch (error) {
+      console.error('Failed to cancel scan:', error);
+      setCancelling(false);
+    }
+  };
+
+  const scanButton = (idleLabel: string) => (
+    <button
+      className="scan-button profile-link"
+      onClick={scanning ? handleCancel : handleScan}
+      disabled={cancelling && scanning}
+    >
+      <span className="profile-link-label">
+        {!scanning ? idleLabel : cancelling ? 'Cancelling...' : 'Cancel scan'}
+      </span>
+    </button>
+  );
+
+  const scanProgressLabel = !scanProgress
+    ? null
+    : !scanProgress.done
+      ? scanProgress.total > 0
+        ? `${cancelling ? 'Cancelling' : 'Scanning'} ${scanProgress.processed} / ${scanProgress.total} logs`
+        : cancelling ? 'Cancelling…' : 'Fetching log list…'
+      : scanProgress.failed
+        ? 'Scan failed'
+        : scanProgress.cancelled
+          ? 'Scan cancelled'
+          : 'Scan complete';
 
   useEffect(() => {
     if (!steamId) return;
@@ -190,7 +223,12 @@ export default function PlayerProfile() {
     return (
       <div className="page-shell">
         <Link className="back-link" to="/">Back to leaderboard</Link>
-        <p className="status-text">Player not found.</p>
+        <p className="status-text">
+          {scanning || scanProgress?.failed || scanProgress?.cancelled ? `${scanProgressLabel}.` : 'Player not found.'}
+        </p>
+        <div className="profile-links">
+          {scanButton('Scan this player')}
+        </div>
       </div>
     );
   }
@@ -207,14 +245,7 @@ export default function PlayerProfile() {
   };
 
   const lastScannedDate = player.lastScannedAt || player.lastScannedLogDate;
-  const scanStatusLabel =
-    scanState === 'scanning'
-      ? 'Scan in progress…'
-      : scanState === 'complete'
-        ? 'Scan complete'
-        : lastScannedDate
-          ? 'Scan complete'
-          : 'Never scanned';
+  const scanStatusLabel = scanProgressLabel ?? (lastScannedDate ? 'Scan complete' : 'Never scanned');
 
   return (
     <div className="page-shell">
@@ -241,7 +272,7 @@ export default function PlayerProfile() {
              </span>
            )}
            <span
-             className={`scan-status ${scanState === 'scanning' ? 'scan-status-scanning' : scanState === 'complete' ? 'scan-status-complete' : 'scan-status-idle'}`}
+             className={`scan-status ${scanning ? 'scan-status-scanning' : scanProgress?.failed || scanProgress?.cancelled ? 'scan-status-idle' : scanProgress?.done || lastScannedDate ? 'scan-status-complete' : 'scan-status-idle'}`}
              aria-live="polite"
              style={{ marginLeft: '8px' }}
            >
@@ -250,15 +281,7 @@ export default function PlayerProfile() {
           </p>
         </div>
         <div className="profile-links">
-          <button
-           className="scan-button profile-link"
-           onClick={handleScan}
-           disabled={scanning}
-          >
-           <span className="profile-link-label">
-             {scanning ? 'Scanning...' : 'Scan Now'}
-           </span>
-          </button>
+          {scanButton('Scan Now')}
           <a className="steam-link profile-link" href={`https://steamcommunity.com/profiles/${player.steamId}`} target="_blank" rel="noreferrer">
             <span className="profile-link-logo" aria-hidden="true">
               <img src="/Steam_icon_logo.svg.webp" alt="" />
